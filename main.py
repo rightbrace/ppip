@@ -53,21 +53,41 @@ class VampireSprite(sprite.Sprite):
         self.rect = self.image.get_rect(center = (WINDOW_WIDTH, y)) 
 
     def update(self, game_window): 
+        
         # Move leftward
         self.rect.x -= self.speed 
 
         # Draw it
         game_window.blit(self.image, (self.rect.x, self.rect.y)) 
 
+# Every part of the game will be represented by a tile. What they all have in common is that they have a rectangle
+# for their position and size, and they refer to a trap in some way
+class BackgroundTile(sprite.Sprite): 
+    def __init__(self, rect): 
+        super().__init__() 
+        self.trap = None 
+        self.rect = rect 
+
+
 # Here, we set up all of the game elements, and store them in varibles
 all_vampires = sprite.Group() 
 
-# Set up the game tiles
-for row in range(6):
-    for column in range(11):
+# Set up all of the game tiles. Start by turning tile_grid into a 2D array, and fill it with InactiveTiles
+tile_grid = []
+for row in range(6): 
+    # Every row will be its own list
+    row_of_tiles = [] 
+    tile_grid.append(row_of_tiles) 
+
+    # For every column in that row...
+    for column in range(11): 
+        # Add a BackgroundTile at that position
+        tile_rect = rect_from_position(row, column) 
+        row_of_tiles.append(BackgroundTile(tile_rect)) 
         # IF we want the grid overlay (as decided by the DRAW_GRID constant), draw a box around some of the tiles
-        if DRAW_GRID: 
-                draw.rect(BACKGROUND, WHITE, rect_from_position(row, column), 1)   
+        if DRAW_GRID:
+                draw.rect(BACKGROUND, WHITE, rect_from_position(row, column), 1)  
+
 
 # Track the game state with a boolean. game_running means we are playing
 game_running = True 
