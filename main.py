@@ -10,6 +10,7 @@ pygame.init()
 WINDOW_WIDTH = 1100 
 WINDOW_HEIGHT = 600 
 TILE_SIZE = 100
+FRAME_RATE = 60
 
 # Adjustable constants
 WHITE = (255, 255, 255) 
@@ -24,6 +25,9 @@ DRAW_GRID = True
 # Set up the window with a size and name
 GAME_WINDOW = display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT)) 
 display.set_caption('Attack of the Vampire Pizzas!') 
+
+# Make a clock, this will regulate the framerate of the game
+clock = time.Clock()
 
 # load an image, if only a name is provided, assume that it is a square tile (because most objects in this game are)
 def load_img(filename, width=TILE_SIZE, height=TILE_SIZE):
@@ -49,6 +53,9 @@ class VampireSprite(sprite.Sprite):
         self.rect = self.image.get_rect(center = (WINDOW_WIDTH, y)) 
 
     def update(self, game_window): 
+        # Move leftward
+        self.rect.x -= self.speed 
+
         # Draw it
         game_window.blit(self.image, (self.rect.x, self.rect.y)) 
 
@@ -84,6 +91,8 @@ while game_running:
 
     # Make the changes visible onscreen
     display.update() 
+    # Let the clock wait until the next frame should start
+    clock.tick(FRAME_RATE)
 
 # Tell pygame we're done
 pygame.quit() 
