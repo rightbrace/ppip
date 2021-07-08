@@ -17,6 +17,10 @@ WHITE = (255, 255, 255)
 
 SPAWN_RATE = 360 
 
+STARTING_BUCKS = 15 
+BUCK_RATE = 120 
+STARTING_BUCK_BOOSTER = 1 
+
 REG_SPEED = 2 
 SLOW_SPEED = 1 
 
@@ -39,9 +43,20 @@ def load_img(filename, width=TILE_SIZE, height=TILE_SIZE):
 def rect_from_position(row, col):
     return Rect(TILE_SIZE * col, TILE_SIZE * row, TILE_SIZE, TILE_SIZE)
 
+# Draw some text at a given position
+def draw_text(game_window, font, text, x, y):
+    surf = font.render(text, True, WHITE) 
+    rect = surf.get_rect() 
+    rect.x = x
+    rect.y = y
+    game_window.blit(surf, rect) 
+
 # Load all of the assets
 BACKGROUND = load_img('restaurant.jpg', WINDOW_WIDTH, WINDOW_HEIGHT)
 VAMPIRE_PIZZA = load_img('vampire.png')
+
+# Load the fonts
+SMALL_FONT = font.Font('pizza_font.ttf', 25)
 
 # VampireSprite is the main opponent. This class sets up a vampire, updates its logic, and draw it
 class VampireSprite(sprite.Sprite): 
@@ -88,6 +103,23 @@ class VampireSprite(sprite.Sprite):
         # Draw it
         game_window.blit(self.image, (self.rect.x, self.rect.y)) 
 
+# Counters will manage keeping track of all of the game variables that change over time
+class Counters(object): 
+    def __init__(self): 
+        self.loop_count = 0 
+        self.pizza_bucks = STARTING_BUCKS 
+        self.buck_booster = STARTING_BUCK_BOOSTER
+
+    def update(self, game_window): 
+        # Increase the number of frames that have passed
+        self.loop_count += 1 
+        # Every few frames, award more bucks
+        if self.loop_count % BUCK_RATE == 0: 
+            self.pizza_bucks += self.buck_booster 
+
+        # Draw the amount of money
+        draw_text(game_window, SMALL_FONT, str(self.pizza_bucks), WINDOW_WIDTH - 50, WINDOW_HEIGHT - 50)
+
 # Every part of the game will be represented by a tile. What they all have in common is that they have a rectangle
 # for their position and size, and they refer to a trap in some way
 class BackgroundTile(sprite.Sprite): 
@@ -98,6 +130,7 @@ class BackgroundTile(sprite.Sprite):
 
 # Here, we set up all of the game elements, and store them in varibles
 all_vampires = sprite.Group() 
+counters = Counters()
 
 # Set up all of the game tiles. Start by turning tile_grid into a 2D array, and fill it with InactiveTiles
 tile_grid = []
@@ -145,6 +178,8 @@ while game_running:
     for vampire in all_vampires: 
         vampire.update(GAME_WINDOW)
 
+    # Tick all of the counters
+    counters.update(GAME_WINDOW)
     # Make the changes visible onscreen
     display.update() 
     # Let the clock wait until the next frame should start
