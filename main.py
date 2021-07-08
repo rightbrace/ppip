@@ -57,6 +57,34 @@ class VampireSprite(sprite.Sprite):
         # Move leftward
         self.rect.x -= self.speed 
 
+        # Find out where we are
+        tile_row = tile_grid[self.rect.y//100] 
+        vamp_left_side = self.rect.x//100 
+        vamp_right_side = (self.rect.x + self.rect.width)//100 
+
+        # Assume that we aren't touching a tile on the left or right
+        right_tile = None
+        left_tile = None
+        # If we are, then update those assumptions...
+        if 0 <= vamp_left_side <= 10: 
+            left_tile = tile_row[vamp_left_side] 
+
+        if 0 <= vamp_right_side <= 10: 
+            right_tile = tile_row[vamp_right_side] 
+
+        # If there is a tile to the left, slow down
+        if not left_tile is None and not left_tile.trap is None:
+            self.speed = SLOW_SPEED
+        # And if there is one on the right, that isn't the same as the one on the left,
+        # slow down too.
+        if not right_tile is None and not left_tile.trap is None:
+            if right_tile != left_tile:
+                self.speed = SLOW_SPEED
+
+        # Remove the vampire if it is out of health, or got to the left
+        if self.rect.x <= TILE_SIZE: 
+            self.kill() 
+
         # Draw it
         game_window.blit(self.image, (self.rect.x, self.rect.y)) 
 
@@ -67,7 +95,6 @@ class BackgroundTile(sprite.Sprite):
         super().__init__() 
         self.trap = None 
         self.rect = rect 
-
 
 # Here, we set up all of the game elements, and store them in varibles
 all_vampires = sprite.Group() 
@@ -81,13 +108,12 @@ for row in range(6):
 
     # For every column in that row...
     for column in range(11): 
-        # Add a BackgroundTile at that position
+        # Add an InactiveTile at that position
         tile_rect = rect_from_position(row, column) 
         row_of_tiles.append(BackgroundTile(tile_rect)) 
         # IF we want the grid overlay (as decided by the DRAW_GRID constant), draw a box around some of the tiles
         if DRAW_GRID:
                 draw.rect(BACKGROUND, WHITE, rect_from_position(row, column), 1)  
-
 
 # Track the game state with a boolean. game_running means we are playing
 game_running = True 
@@ -97,7 +123,17 @@ while game_running:
         if event.type == QUIT: 
             # If we're trying to close the window, both the game and program stop
             game_running = False
-    
+        elif event.type == MOUSEBUTTONDOWN: 
+            # If the user clicks, find out where
+            coordinates = mouse.get_pos() 
+            x = coordinates[0] 
+            y = coordinates[1] 
+            # Convert the click position to tile coordinates
+            tile_y = y//100 
+            tile_x = x//100 
+            # Set the trap to true (we're going to change this later though)
+            tile_grid[tile_y][tile_x].trap = True
+
     # Every frame, paint over the whole screen with the background
     GAME_WINDOW.blit(BACKGROUND, (0, 0)) 
 
