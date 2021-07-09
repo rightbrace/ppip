@@ -1,7 +1,7 @@
 # Import the needed libraries
 import pygame
+from random import randint 
 from pygame import * 
-from random import randint
 
 # Start pygame
 pygame.init() 
@@ -13,8 +13,10 @@ TILE_SIZE = 100
 FRAME_RATE = 60
 
 # Adjustable constants
-WHITE = (255, 255, 255)
-HIGHLIGHT_COLOUR = (238, 190, 47) 
+WHITE = (255, 255, 255) 
+HIGHLIGHT_COLOUR = (238, 190, 47)
+GAME_OVER_COLOUR = (255, 0, 0)
+WIN_COLOUR = (0, 255, 0)
 
 SPAWN_RATE = 360 
 
@@ -22,17 +24,13 @@ STARTING_BUCKS = 15
 BUCK_RATE = 120 
 STARTING_BUCK_BOOSTER = 1 
 
+MAX_BAD_REVIEWS = 3 
+WIN_TIME = FRAME_RATE * 60 * 1 
+
 REG_SPEED = 2 
 SLOW_SPEED = 1 
 
-DRAW_GRID = True
-
-# Set up the window with a size and name
-GAME_WINDOW = display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT)) 
-display.set_caption('Attack of the Vampire Pizzas!') 
-
-# Make a clock, this will regulate the framerate of the game
-clock = time.Clock()
+DRAW_GRID = False
 
 # load an image, if only a name is provided, assume that it is a square tile (because most objects in this game are)
 def load_img(filename, width=TILE_SIZE, height=TILE_SIZE):
@@ -52,6 +50,13 @@ def draw_text(game_window, font, text, x, y):
     rect.y = y
     game_window.blit(surf, rect) 
 
+# Set up the window with a size and name
+GAME_WINDOW = display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT)) 
+display.set_caption('Attack of the Vampire Pizzas!') 
+
+# Make a clock, this will regulate the framerate of the game
+clock = time.Clock()
+
 # Load all of the assets
 BACKGROUND = load_img('restaurant.jpg', WINDOW_WIDTH, WINDOW_HEIGHT)
 VAMPIRE_PIZZA = load_img('vampire.png')
@@ -61,6 +66,8 @@ PEPPERONI = load_img('pepperoni.png')
 
 # Load the fonts
 SMALL_FONT = font.Font('pizza_font.ttf', 25)
+END_FONT = font.Font('pizza_font.ttf', 50)  
+
 
 # VampireSprite is the main opponent. This class sets up a vampire, updates its logic, and draw it
 class VampireSprite(sprite.Sprite): 
@@ -104,6 +111,9 @@ class VampireSprite(sprite.Sprite):
         # Remove the vampire if it is out of health, or got to the left
         if self.health <= 0 or self.rect.x <= TILE_SIZE: 
             self.kill() 
+            # If it was removed because it got to the far left, then increment the bad reviews
+            if self.rect.x <= 100: 
+                counters.bad_reviews += 1 
 
         # Finally, draw it
         game_window.blit(self.image, (self.rect.x, self.rect.y)) 
@@ -126,6 +136,7 @@ class Counters(object):
         self.loop_count = 0 
         self.pizza_bucks = STARTING_BUCKS 
         self.buck_booster = STARTING_BUCK_BOOSTER
+        self.bad_reviews = 0 
 
     def update(self, game_window): 
         # Increase the number of frames that have passed
@@ -136,6 +147,10 @@ class Counters(object):
 
         # Draw the amount of money
         draw_text(game_window, SMALL_FONT, str(self.pizza_bucks), WINDOW_WIDTH - 50, WINDOW_HEIGHT - 50)
+        # Draw the number of bad reviews
+        draw_text(game_window, SMALL_FONT, str(self.bad_reviews), WINDOW_WIDTH - 150, WINDOW_HEIGHT - 50)
+        # Draw the time remaining
+        draw_text(game_window, SMALL_FONT, str((WIN_TIME - self.loop_count) // FRAME_RATE), WINDOW_WIDTH - 250, WINDOW_HEIGHT - 50) 
 
 # A trap object knows its kind, how expensive it is, and what it looks like.
 # Since it doesn't need to do anything else, it only has an __init__ method
@@ -216,7 +231,6 @@ class InactiveTile(BackgroundTile):
     def draw(self, game_window, trap_applicator): 
         pass 
 
-
 # Here, we set up all of the game elements, and store them in varibles
 all_vampires = sprite.Group() 
 counters = Counters() 
@@ -253,14 +267,17 @@ for column in range(2, 11):
         if DRAW_GRID:
             draw.rect(BACKGROUND, WHITE, rect_from_position(row, column), 1)
 
-# Track the game state with a boolean. game_running means we are playing
+# Track the game state with two booleans. game_running means we are playing,
+# program_running means that the game is over, but the window should stick around
 game_running = True 
+program_running = True 
 while game_running: 
     # Handle clicking in the game, and trying to close the window
     for event in pygame.event.get(): 
         if event.type == QUIT: 
             # If we're trying to close the window, both the game and program stop
             game_running = False
+            program_running = False 
         elif event.type == MOUSEBUTTONDOWN: 
             # If the user clicks, find out where
             coordinates = mouse.get_pos() 
@@ -289,12 +306,35 @@ while game_running:
         for tile in tile_row: 
             tile.draw(GAME_WINDOW, trap_applicator) 
 
+    # Check our win and lose conditions:
+    if counters.bad_reviews >= MAX_BAD_REVIEWS or counters.loop_count > WIN_TIME:
+        game_running = False 
+
     # Tick all of the counters
     counters.update(GAME_WINDOW)
     # Make the changes visible onscreen
     display.update() 
     # Let the clock wait until the next frame should start
     clock.tick(FRAME_RATE)
+
+# After game_running stops being true, if program_running is still true, we've
+# either won or lost. Figure out which, and draw it to the screen
+if program_running: 
+    if counters.bad_reviews >= MAX_BAD_REVIEWS: 
+        end_surf = END_FONT.render('Game Over', True, GAME_OVER_COLOUR) 
+    else: 
+        end_surf = END_FONT.render('You Win!', True, WIN_COLOUR) 
+    # Draw the text to the screen
+    GAME_WINDOW.blit(end_surf, (350, 200)) 
+    # Update the screen
+    display.update() 
+
+# Finally, loop until the user closes the window
+while program_running: 
+    for event in pygame.event.get(): 
+        if event.type == QUIT: 
+            program_running = False 
+    clock.tick(FRAME_RATE) 
 
 # Tell pygame we're done
 pygame.quit() 
