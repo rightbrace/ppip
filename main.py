@@ -13,7 +13,8 @@ TILE_SIZE = 100
 FRAME_RATE = 60
 
 # Adjustable constants
-WHITE = (255, 255, 255) 
+WHITE = (255, 255, 255)
+HIGHLIGHT_COLOUR = (238, 190, 47) 
 
 SPAWN_RATE = 360 
 
@@ -54,6 +55,9 @@ def draw_text(game_window, font, text, x, y):
 # Load all of the assets
 BACKGROUND = load_img('restaurant.jpg', WINDOW_WIDTH, WINDOW_HEIGHT)
 VAMPIRE_PIZZA = load_img('vampire.png')
+GARLIC = load_img('garlic.png')
+CUTTER = load_img('pizzacutter.png')
+PEPPERONI = load_img('pepperoni.png')
 
 # Load the fonts
 SMALL_FONT = font.Font('pizza_font.ttf', 25)
@@ -66,9 +70,10 @@ class VampireSprite(sprite.Sprite):
         self.image = VAMPIRE_PIZZA.copy() 
         y = 50 + randint(0, 4) * 100 
         self.rect = self.image.get_rect(center = (WINDOW_WIDTH, y)) 
+        self.health = 200
 
-    def update(self, game_window): 
-        
+    def update(self, game_window, counters): 
+    
         # Move leftward
         self.rect.x -= self.speed 
 
@@ -87,21 +92,33 @@ class VampireSprite(sprite.Sprite):
         if 0 <= vamp_right_side <= 10: 
             right_tile = tile_row[vamp_right_side] 
 
-        # If there is a tile to the left, slow down
-        if not left_tile is None and not left_tile.trap is None:
-            self.speed = SLOW_SPEED
+        # If there is a tile to the left, hit it
+        if not left_tile is None:
+            self.attack(left_tile)
         # And if there is one on the right, that isn't the same as the one on the left,
-        # slow down too.
-        if not right_tile is None and not left_tile.trap is None:
+        # hit it too.
+        if not right_tile is None:
             if right_tile != left_tile:
-                self.speed = SLOW_SPEED
+                self.attack(right_tile)
 
         # Remove the vampire if it is out of health, or got to the left
-        if self.rect.x <= TILE_SIZE: 
+        if self.health <= 0 or self.rect.x <= TILE_SIZE: 
             self.kill() 
 
-        # Draw it
+        # Finally, draw it
         game_window.blit(self.image, (self.rect.x, self.rect.y)) 
+
+    def attack(self, tile): 
+        # If a vampire has been slowed, update its speed permanently to show that
+        if tile.trap == SLOW: 
+            self.speed = SLOW_SPEED 
+
+        # Pizza cutters just deal damage every frame, so reduce its health
+        if tile.trap == DAMAGE: 
+            self.health -= 1 
+
+        # There are other kinds of tiles, but if we don't handle them, they won't do anything, which
+        # is convenient for InactiveTile, etc
 
 # Counters will manage keeping track of all of the game variables that change over time
 class Counters(object): 
@@ -120,6 +137,30 @@ class Counters(object):
         # Draw the amount of money
         draw_text(game_window, SMALL_FONT, str(self.pizza_bucks), WINDOW_WIDTH - 50, WINDOW_HEIGHT - 50)
 
+# A trap object knows its kind, how expensive it is, and what it looks like.
+# Since it doesn't need to do anything else, it only has an __init__ method
+class Trap(object): 
+    def __init__(self, trap_kind, cost, trap_img): 
+        self.trap_kind = trap_kind 
+        self.cost = cost 
+        self.trap_img = trap_img 
+
+# The TrapApplicator tracks which trap is selected (if any)
+# Later, the PlayTile will check to see if the TrapApplicator has a selection,
+# and if it does, it will set its own trap to the selection.
+# In professional terms, this kind of object (a single use object that other objects
+# look to for reference) is called a "Singleton"
+class TrapApplicator(object): 
+    def __init__(self): 
+        self.selected = None 
+    
+    def select_trap(self, trap): 
+        if trap.cost <= counters.pizza_bucks: 
+            self.selected = trap 
+
+    def select_tile(self, tile, counters): 
+        self.selected = tile.set_trap(self.selected, counters)  
+
 # Every part of the game will be represented by a tile. What they all have in common is that they have a rectangle
 # for their position and size, and they refer to a trap in some way
 class BackgroundTile(sprite.Sprite): 
@@ -128,9 +169,62 @@ class BackgroundTile(sprite.Sprite):
         self.trap = None 
         self.rect = rect 
 
+# A PlayTile represents tiles in the 'lanes' of the game. They can be either empty, or hold one trap in them
+class PlayTile(BackgroundTile): 
+    # When the user clicks, set_trap is called by TrapApplicator
+    def set_trap(self, trap, counters): 
+        # If TrapApplicator gave us a trap, and we don't have one already (self.trap is)
+        if bool(trap) and self.trap is None: 
+            # Pay the cost
+            counters.pizza_bucks -= trap.cost 
+            self.trap = trap 
+            # In the case of the earning trap, we can increase the rate of bucks right away
+            if trap == EARN: 
+                counters.buck_booster += 1 
+
+    # If and only if this PlayTile also holds a trap, draw the trap image
+    def draw(self, game_window, trap_applicator): 
+        if not self.trap is None: 
+            game_window.blit(self.trap.trap_img, (self.rect.x, self.rect.y)) 
+
+# ButtonTiles represent the three buttons along the bottom of the screen
+class ButtonTile(BackgroundTile):   
+
+    def __init__(self, rect, trap):
+        super().__init__(rect)
+        self.trap = trap
+
+    # When clicked, if the player can afford to buy the trap, return that trap to the caller
+    def set_trap(self, trap, counters): 
+        if counters.pizza_bucks >= self.trap.cost: 
+            return self.trap 
+
+    # draw the button
+    def draw(self, game_window, trap_applicator): 
+        # Always draw the image of the trap it represents
+        GAME_WINDOW.blit(self.trap.trap_img, (self.rect.x, self.rect.y))
+        # But if it is also the selected trap, draw a rectangle around it
+        if not trap_applicator.selected is None: 
+            if trap_applicator.selected == self.trap: 
+                draw.rect(game_window, HIGHLIGHT_COLOUR, (self.rect.x, self.rect.y, TILE_SIZE, TILE_SIZE), 5) 
+
+# InactiveTiles do nothing, so we can call pass for both methods
+class InactiveTile(BackgroundTile): 
+    def set_trap(self, trap, counters): 
+        pass 
+
+    def draw(self, game_window, trap_applicator): 
+        pass 
+
+
 # Here, we set up all of the game elements, and store them in varibles
 all_vampires = sprite.Group() 
-counters = Counters()
+counters = Counters() 
+
+SLOW = Trap('SLOW', 5, GARLIC) 
+DAMAGE = Trap('DAMAGE', 3, CUTTER) 
+EARN = Trap('EARN', 7, PEPPERONI) 
+trap_applicator = TrapApplicator() 
 
 # Set up all of the game tiles. Start by turning tile_grid into a 2D array, and fill it with InactiveTiles
 tile_grid = []
@@ -143,10 +237,21 @@ for row in range(6):
     for column in range(11): 
         # Add an InactiveTile at that position
         tile_rect = rect_from_position(row, column) 
-        row_of_tiles.append(BackgroundTile(tile_rect)) 
+        row_of_tiles.append(InactiveTile(tile_rect))   
+
+# Go back and add our button tiles at set positions
+tile_grid[5][2] = ButtonTile(rect_from_position(5, 2), SLOW)
+tile_grid[5][3] = ButtonTile(rect_from_position(5, 3), DAMAGE)
+tile_grid[5][4] = ButtonTile(rect_from_position(5, 4), EARN)
+
+# Finally, replace the tiles over the lanes with PlayTiles instead of InactiveTiles
+# (since PlayTiles are the only ones that can hold traps)
+for column in range(2, 11):
+    for row in range(0, 5):
+        tile_grid[row][column] = PlayTile(rect_from_position(row, column))
         # IF we want the grid overlay (as decided by the DRAW_GRID constant), draw a box around some of the tiles
         if DRAW_GRID:
-                draw.rect(BACKGROUND, WHITE, rect_from_position(row, column), 1)  
+            draw.rect(BACKGROUND, WHITE, rect_from_position(row, column), 1)
 
 # Track the game state with a boolean. game_running means we are playing
 game_running = True 
@@ -164,8 +269,9 @@ while game_running:
             # Convert the click position to tile coordinates
             tile_y = y//100 
             tile_x = x//100 
-            # Set the trap to true (we're going to change this later though)
-            tile_grid[tile_y][tile_x].trap = True
+            # Let the trap applicator deal with the click by passing it the tile
+            # that the player clicked on
+            trap_applicator.select_tile(tile_grid[tile_y][tile_x], counters)
 
     # Every frame, paint over the whole screen with the background
     GAME_WINDOW.blit(BACKGROUND, (0, 0)) 
@@ -176,7 +282,12 @@ while game_running:
 
     # Update every vampire
     for vampire in all_vampires: 
-        vampire.update(GAME_WINDOW)
+        vampire.update(GAME_WINDOW, counters)
+
+    # Draw every tile
+    for tile_row in tile_grid: 
+        for tile in tile_row: 
+            tile.draw(GAME_WINDOW, trap_applicator) 
 
     # Tick all of the counters
     counters.update(GAME_WINDOW)
